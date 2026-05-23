@@ -1,0 +1,382 @@
+// MIBBS data model
+// All scaffolded for Week 0 — modules will iterate on indexes & constraints.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Pooled connection used at runtime (e.g. Neon's `-pooler` host).
+  url      = env("DATABASE_URL")
+  // Direct (non-pooled) connection used by `prisma migrate` and `prisma db
+  // seed`. Required because migrations cannot run through pgbouncer. Falls
+  // back to DATABASE_URL when unset (e.g. local Postgres without pgbouncer).
+  directUrl = env("DIRECT_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Locale {
+  EN
+  TE
+  HI
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum DigitalMaturity {
+  BASIC
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CompetitionLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SalesChannel {
+  ONLINE
+  RETAIL
+  ONLINE_AND_RETAIL
+  WHOLESALE
+  SERVICES
+}
+
+enum Intent {
+  GROWTH
+  CONTROL
+  STABILITY
+  LEARNING
+  RELATIONSHIP
+}
+
+enum NotificationChannel {
+  EMAIL
+  WHATSAPP
+  SMS
+  INAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum OtpPurpose {
+  LOGIN
+  SIGNUP
+  PASSWORD_RESET
+  PHONE_VERIFY
+}
+
+// -----------------------------------------------------------------------------
+// Identity & profile
+// -----------------------------------------------------------------------------
+
+model User {
+  id            String     @id @default(cuid())
+  name          String
+  email         String     @unique
+  phoneE164     String?    @unique
+  passwordHash  String
+  locale        Locale     @default(EN)
+  status        UserStatus @default(PENDING_VERIFICATION)
+  emailVerified DateTime?
+  phoneVerified DateTime?
+  lastLoginAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  businessProfile        BusinessProfile?
+  questionnaireSessions  QuestionnaireSession[]
+  evaluations            Evaluation[]
+  marketingPlans         MarketingPlan[]
+  spendLogs              SpendLog[]
+  complianceSnapshots    ComplianceSnapshot[]
+  feedback               Feedback[]
+  analyticsEvents        AnalyticsEvent[]
+  chatThreads            ChatThread[]
+  notifications          Notification[]
+  refreshTokens          RefreshToken[]
+  otpCodes               OtpCode[]
+
+  @@index([createdAt])
+}
+
+model BusinessProfile {
+  id               String           @id @default(cuid())
+  userId           String           @unique
+  businessName     String?
+  industry         String?
+  location         String?
+  yearsInBusiness  String?          // "less than 1 year", "1-3", "3-5", etc.
+  monthlyRevenue   Decimal?         @db.Decimal(14, 2)
+  monthlyBudget    Decimal?         @db.Decimal(14, 2)
+  targetAudience   String?
+  competitionLevel CompetitionLevel?
+  digitalMaturity  DigitalMaturity?
+  salesChannel     SalesChannel?
+  marketingGoal    String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// -----------------------------------------------------------------------------
+// Auth helpers
+// -----------------------------------------------------------------------------
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model OtpCode {
+  id         String     @id @default(cuid())
+  userId     String?
+  identifier String     // email OR phone (E.164)
+  purpose    OtpPurpose
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([identifier, purpose])
+  @@index([expiresAt])
+}
+
+// -----------------------------------------------------------------------------
+// Questionnaire + Decision engine
+// -----------------------------------------------------------------------------
+
+model QuestionnaireSession {
+  id           String   @id @default(cuid())
+  userId       String
+  currentStep  Int      @default(1)
+  totalSteps   Int      @default(8)
+  isCompleted  Boolean  @default(false)
+  responses    Json     @default("{}")
+  version      Int      @default(1)
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evaluations Evaluation[]
+
+  @@index([userId])
+  @@index([userId, isCompleted])
+}
+
+/// Canonical, versioned C×O matrix. Seeded; one ACTIVE version at a time.
+model ChallengeObjectiveMatrix {
+  id              String   @id @default(cuid())
+  version         Int      @unique
+  isActive        Boolean  @default(false)
+  rowsChallenges  Json     // ["Not enough customers", ...]
+  colsObjectives  Json     // ["AWARENESS", "ENQUIRIES", ...]
+  cells           Json     // 10x10 int matrix
+  intentMapping   Json     // objective -> Intent group
+  channelMapping  Json     // intent -> channels[]
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@index([isActive])
+}
+
+model Evaluation {
+  id                String   @id @default(cuid())
+  userId            String
+  sessionId         String?
+  matrixVersion     Int
+  challengeVector   Int[]    // length 10, binary  (S)
+  objectiveMask     Int[]    // length 10, binary  (O)
+  rawScores         Float[]  // R[j]  = Σᵢ S[i] · M[i][j]   (BEFORE mask)
+  normalizedScores  Float[]  // F[j]  = (R[j] · O[j]) / k   (used by allocator)
+  createdAt         DateTime @default(now())
+
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session QuestionnaireSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  plans   MarketingPlan[]
+
+  @@index([userId])
+}
+
+model MarketingPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  evaluationId  String
+  monthlyBudget Decimal  @db.Decimal(14, 2)
+  annualBudget  Decimal  @db.Decimal(14, 2)
+  /// JSON: [{ objective, intent, percent, amount, channels: [{ name, percent, amount }] }]
+  allocations   Json
+  /// JSON: action items per intent group
+  actionPlan    Json
+  version       Int      @default(1)
+  isCurrent     Boolean  @default(true)
+  generatedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  spendLogs  SpendLog[]
+  compliance ComplianceSnapshot[]
+  feedback   Feedback[]
+
+  @@index([userId, isCurrent])
+  @@index([generatedAt])
+}
+
+// -----------------------------------------------------------------------------
+// Spend tracking
+// -----------------------------------------------------------------------------
+
+model SpendLog {
+  id         String   @id @default(cuid())
+  userId     String
+  planId     String
+  channel    String
+  intent     Intent?
+  amount     Decimal  @db.Decimal(14, 2)
+  occurredOn DateTime
+  note       String?
+  createdAt  DateTime @default(now())
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan MarketingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredOn])
+  @@index([planId])
+}
+
+model ComplianceSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  planId      String
+  periodStart DateTime
+  periodEnd   DateTime
+  /// JSON: { channel: amount }
+  plannedJson Json
+  /// JSON: { channel: amount }
+  actualJson  Json
+  /// 0..100 compliance score
+  score       Float
+  createdAt   DateTime @default(now())
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan MarketingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  // One snapshot per (user, plan, month) — keeps spend compliance idempotent.
+  @@unique([userId, planId, periodStart])
+  @@index([userId, periodStart])
+}
+
+// -----------------------------------------------------------------------------
+// Feedback & analytics
+// -----------------------------------------------------------------------------
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  planId    String?
+  rating    Int      // 1..5
+  comments  String?
+  createdAt DateTime @default(now())
+
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan MarketingPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  userId     String?
+  eventType  String
+  payload    Json     @default("{}")
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, occurredAt])
+  @@index([userId, occurredAt])
+}
+
+// -----------------------------------------------------------------------------
+// AI chatbot
+// -----------------------------------------------------------------------------
+
+model ChatThread {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  role      String   // user | assistant | system
+  content   String
+  tokensIn  Int?
+  tokensOut Int?
+  createdAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// Notifications
+// -----------------------------------------------------------------------------
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  channel   NotificationChannel
+  template  String
+  payload   Json                @default("{}")
+  status    NotificationStatus  @default(PENDING)
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status])
+}

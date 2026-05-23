@@ -1,0 +1,57 @@
+# Render Blueprint — `render.yaml` (Infrastructure as Code for Render).
+#
+# Render reads this file when you click "New → Blueprint" on the dashboard
+# and create the web service in one go. You still have to paste the
+# external service secrets (DATABASE_URL, REDIS_URL, …) into the dashboard
+# because we don't commit credentials to git.
+#
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: mibbs-backend
+    runtime: node
+    region: singapore # closest to ap-south-1 (Mumbai)
+    plan: starter # use `free` for trial, switch to `starter` ($7/mo) for no sleep
+    branch: main
+    # Build runs once per deploy. Steps, in order:
+    #   1. install all deps (including devDeps used by prisma + tsx)
+    #   2. generate the prisma client against the current schema
+    #   3. apply migration history to the database
+    #   4. download Inter + Fraunces fonts used by PDF reports
+    #   5. compile NestJS → dist (also copies fonts to dist/modules/reports/fonts)
+    #   6. seed the canonical C×O matrix (idempotent — safe to run on every deploy)
+    buildCommand: |
+      npm ci &&
+      npx prisma generate &&
+      npx prisma migrate deploy &&
+      node scripts/fetch-pdf-fonts.mjs &&
+      npm run build &&
+      npx prisma db seed
+    startCommand: node dist/main.js
+    healthCheckPath: /v1/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PREFIX
+        value: v1
+      # PORT is injected by Render automatically.
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: COOKIE_SAMESITE
+        value: none # cross-site cookie between Vercel + Render
+      # The remaining variables (DATABASE_URL, DIRECT_URL, REDIS_URL, JWT_*,
+      # CORS_ORIGINS, COOKIE_DOMAIN, etc.) must be set manually in the Render
+      # dashboard — they contain secrets and environment-specific URLs.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_TTL
+        value: 15m
+      - key: JWT_REFRESH_TTL
+        value: 30d
+      - key: BCRYPT_ROUNDS
+        value: '12'
+      - key: LOG_LEVEL
+        value: info

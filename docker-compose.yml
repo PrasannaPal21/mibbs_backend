@@ -1,0 +1,61 @@
+name: mibbs
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mibbs
+      POSTGRES_PASSWORD: mibbs
+      POSTGRES_DB: mibbs
+    ports:
+      - "5432:5432"
+    volumes:
+      - mibbs_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mibbs -d mibbs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - mibbs_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      API_PREFIX: v1
+      CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql://mibbs:mibbs@postgres:5432/mibbs?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: dev-access-secret-change-me-please-32+chars
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-me-please-32+chars
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    profiles: ["full"]
+
+volumes:
+  mibbs_pg_data:
+  mibbs_redis_data:
