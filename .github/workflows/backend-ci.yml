@@ -38,7 +38,11 @@ jobs:
 
     env:
       NODE_ENV: test
+      # Both URLs point at the same CI Postgres (no pgbouncer here).
+      # DIRECT_URL is required because prisma/schema.prisma now declares
+      # `directUrl = env("DIRECT_URL")` for production (Neon) deploys.
       DATABASE_URL: postgresql://mibbs:mibbs@localhost:5432/mibbs_test?schema=public
+      DIRECT_URL: postgresql://mibbs:mibbs@localhost:5432/mibbs_test?schema=public
       REDIS_HOST: localhost
       REDIS_PORT: 6379
       JWT_ACCESS_SECRET: ci-access-secret-do-not-use-in-prod-32chars
@@ -56,3 +60,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # PDF fonts are fetched at deploy time, not at CI time — we don't
+      # exercise PDF generation in unit tests so we don't need them here.
