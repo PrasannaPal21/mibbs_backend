@@ -20,8 +20,10 @@ services:
     #   4. download Inter + Fraunces fonts used by PDF reports
     #   5. compile NestJS → dist (also copies fonts to dist/modules/reports/fonts)
     #   6. seed the canonical C×O matrix (idempotent — safe to run on every deploy)
+    # NODE_ENV=production is set below, which makes plain `npm ci` skip
+    # devDependencies (@nestjs/cli, typescript, tsx). --include=dev fixes that.
     buildCommand: |
-      npm ci &&
+      npm ci --include=dev &&
       npx prisma generate &&
       npx prisma migrate deploy &&
       node scripts/fetch-pdf-fonts.mjs &&
