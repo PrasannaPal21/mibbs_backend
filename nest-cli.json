@@ -5,7 +5,8 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": [
-      { "include": "modules/reports/fonts/*.ttf", "outDir": "dist", "watchAssets": true }
+      { "include": "modules/reports/fonts/*.ttf", "outDir": "dist", "watchAssets": true },
+      { "include": "modules/reports/assets/*.png", "outDir": "dist", "watchAssets": true }
     ]
   }
 }
