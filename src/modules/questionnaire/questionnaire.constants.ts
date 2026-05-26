@@ -200,6 +200,37 @@ export const OBJECTIVE_LABELS: Array<{ key: string; label: string; description: 
 /** Hard cap on selectable objectives — PDF: "Choose up to 4 that matter most right now." */
 export const MAX_OBJECTIVES_SELECTED = 4;
 
+/** Stored in `BusinessProfile.marketingGoal` — one label per line. */
+export const MARKETING_GOAL_SEPARATOR = '\n';
+
+/** Parse stored goals; fall back to evaluation mask for older profiles. */
+export function resolveMarketingGoals(
+  marketingGoal: string | null | undefined,
+  objectiveMask?: number[],
+): string[] {
+  const fromMask =
+    objectiveMask?.length ?
+      objectiveMask
+        .map((on, i) => (on ? OBJECTIVE_LABELS[i]?.label : null))
+        .filter((l): l is string => Boolean(l))
+    : [];
+
+  if (marketingGoal?.includes(MARKETING_GOAL_SEPARATOR)) {
+    return marketingGoal
+      .split(MARKETING_GOAL_SEPARATOR)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const single = marketingGoal?.trim() ? [marketingGoal.trim()] : [];
+
+  // Profiles saved before multi-goal support only stored the first label —
+  // prefer the evaluation mask when it has more objectives selected.
+  if (fromMask.length > single.length) return fromMask;
+  if (single.length > 0) return single;
+  return fromMask;
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // Derivation maps for the NEW-BUSINESS path.
 //

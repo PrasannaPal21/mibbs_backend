@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { join } from 'node:path';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { resolveMarketingGoals } from '../questionnaire/questionnaire.constants';
 
 interface PlanAllocation {
   label: string;
@@ -89,11 +90,18 @@ export class ReportsService {
   async generatePlanPdf(userId: string, planId: string): Promise<Buffer> {
     const plan = await this.prisma.marketingPlan.findFirst({
       where: { id: planId, userId },
-      include: { user: { include: { businessProfile: true } } },
+      include: {
+        evaluation: true,
+        user: { include: { businessProfile: true } },
+      },
     });
     if (!plan) throw new NotFoundException('Marketing plan not found');
 
     const bp = plan.user.businessProfile;
+    const marketingGoals = resolveMarketingGoals(
+      bp?.marketingGoal,
+      plan.evaluation?.objectiveMask,
+    );
     const allocations = plan.allocations as unknown as PlanAllocation[];
     const businessName = bp?.businessName ?? plan.user.name;
     const monthlyBudget = Number(plan.monthlyBudget);
@@ -234,9 +242,10 @@ export class ReportsService {
           color: PALETTE.ink,
         },
         {
-          label: 'MARKETING GOAL',
-          value: truncate(bp?.marketingGoal ?? '—', 22),
+          label: marketingGoals.length > 1 ? 'MARKETING GOALS' : 'MARKETING GOAL',
+          value: marketingGoals.length > 0 ? marketingGoals.join('\n') : '—',
           color: '#EA580C',
+          multiline: true,
         },
         { label: 'SALES CHANNEL', value: 'Online & Retail', color: '#7C3AED' },
       ];
@@ -264,12 +273,12 @@ export class ReportsService {
           });
         doc
           .font('Sans')
-          .fontSize(10)
+          .fontSize('multiline' in cell && cell.multiline ? 8 : 10)
           .fillColor(cell.color)
           .text(cell.value, x + 8, y + 22, {
             width: cellW - 16,
-            ellipsis: true,
-            lineBreak: false,
+            ellipsis: !('multiline' in cell && cell.multiline),
+            lineBreak: Boolean('multiline' in cell && cell.multiline),
           });
       });
       doc.y = tableY + cellH * 2 + 24;

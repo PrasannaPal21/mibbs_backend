@@ -1,11 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { DecisionEngineService } from '../decision-engine/decision-engine.service';
 import type { PlanGenerationResult } from '../decision-engine/decision-engine.types';
+import { resolveMarketingGoals } from '../questionnaire/questionnaire.constants';
 
 @Injectable()
 export class MarketingPlansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly decisionEngine: DecisionEngineService,
+  ) {}
 
   async createFromEvaluation(
     userId: string,
@@ -55,6 +60,57 @@ export class MarketingPlansService {
     return this.formatPlan(plan);
   }
 
+  /**
+   * Let the user change their monthly budget without re-running the full
+   * questionnaire. We keep the same challenge/objective vectors from the
+   * original evaluation and re-run only the allocator step.
+   */
+  async updateBudget(userId: string, planId: string, monthlyBudget: number) {
+    if (!Number.isFinite(monthlyBudget) || monthlyBudget <= 0) {
+      throw new BadRequestException('monthlyBudget must be a positive number');
+    }
+
+    const plan = await this.prisma.marketingPlan.findFirst({
+      where: { id: planId, userId },
+      include: { evaluation: true },
+    });
+    if (!plan) throw new NotFoundException('Marketing plan not found');
+
+    const ev = plan.evaluation;
+    const result = await this.decisionEngine.generatePlan({
+      challengeVector: ev.challengeVector,
+      objectiveMask: ev.objectiveMask,
+      monthlyBudget,
+    });
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.marketingPlan.update({
+        where: { id: planId },
+        data: {
+          monthlyBudget: result.monthlyBudget,
+          annualBudget: result.annualBudget,
+          allocations: result.allocations as unknown as Prisma.InputJsonValue,
+          actionPlan: result.actionPlan as unknown as Prisma.InputJsonValue,
+        },
+        include: {
+          evaluation: true,
+          user: { include: { businessProfile: true } },
+        },
+      });
+      await tx.businessProfile.updateMany({
+        where: { userId },
+        data: { monthlyBudget: result.monthlyBudget },
+      });
+      return row;
+    });
+
+    return this.formatPlan(updated);
+  }
+
+  /**
+   * Returned business-profile shape — kept loose (string | null) so the
+   * frontend doesn't have to know about Prisma enums.
+   */
   private formatPlan(plan: {
     id: string;
     monthlyBudget: Prisma.Decimal;
@@ -70,6 +126,9 @@ export class MarketingPlansService {
         businessName: string | null;
         industry: string | null;
         location: string | null;
+        yearsInBusiness: string | null;
+        digitalMaturity: string | null;
+        salesChannel: string | null;
         monthlyRevenue: Prisma.Decimal | null;
         monthlyBudget: Prisma.Decimal | null;
         targetAudience: string | null;
@@ -79,6 +138,15 @@ export class MarketingPlansService {
     };
   }) {
     const bp = plan.user.businessProfile;
+    const fallbackGoals = (() => {
+      const top = deriveTopAllocationLabel(plan.allocations);
+      return top ? [top] : [];
+    })();
+    const marketingGoals = bp
+      ? resolveMarketingGoals(bp.marketingGoal, plan.evaluation.objectiveMask)
+      : resolveMarketingGoals(null, plan.evaluation.objectiveMask);
+    const goals =
+      marketingGoals.length > 0 ? marketingGoals : fallbackGoals;
     return {
       id: plan.id,
       generatedAt: plan.generatedAt,
@@ -92,11 +160,15 @@ export class MarketingPlansService {
             businessName: bp.businessName,
             industry: bp.industry,
             location: bp.location,
+            yearsInBusiness: bp.yearsInBusiness,
+            digitalMaturity: bp.digitalMaturity,
+            salesChannel: bp.salesChannel,
             monthlyRevenue: bp.monthlyRevenue ? Number(bp.monthlyRevenue) : null,
             monthlyBudget: bp.monthlyBudget ? Number(bp.monthlyBudget) : null,
             targetAudience: bp.targetAudience,
             competitionLevel: bp.competitionLevel,
-            marketingGoal: bp.marketingGoal,
+            marketingGoal: goals[0] ?? null,
+            marketingGoals: goals,
           }
         : null,
       evaluation: {
@@ -105,4 +177,13 @@ export class MarketingPlansService {
       },
     };
   }
+}
+
+/** Best-effort fallback: the allocation with the largest amount becomes the
+ *  headline marketing goal when the profile has no explicit value yet. */
+function deriveTopAllocationLabel(allocations: unknown): string | null {
+  if (!Array.isArray(allocations) || allocations.length === 0) return null;
+  const rows = allocations as Array<{ label?: string; amount?: number }>;
+  const top = [...rows].sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))[0];
+  return top?.label ?? null;
 }

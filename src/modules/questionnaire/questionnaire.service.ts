@@ -5,6 +5,7 @@ import {
   Prisma,
   SalesChannel,
 } from '@prisma/client';
+import type { Prisma as PrismaTypes } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DecisionEngineService } from '../decision-engine/decision-engine.service';
 import { MarketingPlansService } from '../marketing-plans/marketing-plans.service';
@@ -27,6 +28,7 @@ import {
   HELP_TO_OBJECTIVES,
   INDUSTRY_OPTIONS,
   isNewBusinessPath,
+  MARKETING_GOAL_SEPARATOR,
   MAX_OBJECTIVES_SELECTED,
   MODE_TO_CHALLENGES,
   MonthlySpendBucket,
@@ -546,19 +548,59 @@ export class QuestionnaireService {
     monthlyBudget: number,
   ) {
     await this.syncStep1ToProfile(userId, r.step1);
-    const profileData = {
+    const profileData: PrismaTypes.BusinessProfileUncheckedUpdateInput = {
       industry: r.step3?.industry,
       location: this.formatLocation(r.step2),
-      yearsInBusiness: r.step4?.yearsInBusiness,
+      yearsInBusiness: this.deriveYearsInBusiness(r),
       monthlyRevenue: r.step7?.monthlyRevenue,
       monthlyBudget,
-      marketingGoal: this.derivePrimaryObjective(r),
+      marketingGoal: this.deriveMarketingGoalLabels(r).join(MARKETING_GOAL_SEPARATOR),
+      digitalMaturity: this.deriveDigitalMaturity(r),
+      salesChannel: this.deriveSalesChannel(r),
+      targetAudience: this.deriveTargetAudience(r),
     };
     await this.prisma.businessProfile.upsert({
       where: { userId },
-      create: { userId, ...profileData },
+      create: { userId, ...profileData } as PrismaTypes.BusinessProfileUncheckedCreateInput,
       update: profileData,
     });
+  }
+
+  /** Map our questionnaire's digital-presence enum onto Prisma's DigitalMaturity. */
+  private deriveDigitalMaturity(r: QuestionnaireResponses): DigitalMaturity | undefined {
+    const dp = r.step6?.digitalPresence;
+    if (!dp) return undefined;
+    if (dp === 'NONE' || dp === 'BASIC') return DigitalMaturity.BASIC;
+    if (dp === 'GROWING') return DigitalMaturity.INTERMEDIATE;
+    if (dp === 'ADVANCED') return DigitalMaturity.ADVANCED;
+    return undefined;
+  }
+
+  /** Map businessMode (new path) onto Prisma's SalesChannel; infer for existing. */
+  private deriveSalesChannel(r: QuestionnaireResponses): SalesChannel | undefined {
+    const mode = r.step5?.businessMode;
+    if (mode === 'ONLINE') return SalesChannel.ONLINE;
+    if (mode === 'OFFLINE') return SalesChannel.RETAIL;
+    const dp = r.step6?.digitalPresence;
+    if (dp === 'ADVANCED' || dp === 'GROWING') return SalesChannel.ONLINE_AND_RETAIL;
+    return undefined;
+  }
+
+  /** Stage / years-in-business cell — falls back to "Just starting" for new businesses. */
+  private deriveYearsInBusiness(r: QuestionnaireResponses): string | undefined {
+    if (r.step4?.yearsInBusiness) return r.step4.yearsInBusiness;
+    if (isNewBusinessPath(r.step1?.stage)) return 'Just starting';
+    return undefined;
+  }
+
+  /** Target audience cell — synthesised from offering + segment. */
+  private deriveTargetAudience(r: QuestionnaireResponses): string | undefined {
+    const offering = r.step3?.businessOffering;
+    const segment = r.step3?.productSegment;
+    if (offering === 'PRODUCTS' && segment) return `Products · ${segment}`;
+    if (offering === 'PRODUCTS') return 'Product customers';
+    if (offering === 'SERVICES') return 'Service customers';
+    return undefined;
   }
 
   private formatLocation(step2?: QuestionnaireResponses['step2']): string | undefined {
@@ -567,17 +609,26 @@ export class QuestionnaireService {
     return parts.length > 0 ? parts.join(' · ') : step2.location;
   }
 
-  /** Pick a human-readable headline objective so the report card has copy. */
-  private derivePrimaryObjective(r: QuestionnaireResponses): string | undefined {
+  /** All user-facing objective labels selected (or derived) at submit time. */
+  private deriveMarketingGoalLabels(r: QuestionnaireResponses): string[] {
     if (!isNewBusinessPath(r.step1?.stage)) {
-      const first = r.step8?.objectives?.[0];
-      if (typeof first === 'number') return OBJECTIVE_LABELS[first]?.label;
+      return (r.step8?.objectives ?? [])
+        .map((i) => OBJECTIVE_LABELS[i]?.label)
+        .filter((l): l is string => Boolean(l));
     }
-    const help = r.step6?.helpNeeded?.[0];
-    if (help) {
-      const firstObj = HELP_TO_OBJECTIVES[help]?.[0];
-      if (typeof firstObj === 'number') return OBJECTIVE_LABELS[firstObj]?.label;
+    const set = new Set<number>();
+    if (r.step3?.businessOffering) {
+      for (const i of OFFERING_TO_OBJECTIVES[r.step3.businessOffering]) set.add(i);
     }
-    return undefined;
+    for (const h of r.step6?.helpNeeded ?? []) {
+      for (const i of HELP_TO_OBJECTIVES[h]) set.add(i);
+    }
+    if (set.size === 0) {
+      set.add(0).add(1).add(8);
+    }
+    return [...set]
+      .sort((a, b) => a - b)
+      .map((i) => OBJECTIVE_LABELS[i]?.label)
+      .filter((l): l is string => Boolean(l));
   }
 }
