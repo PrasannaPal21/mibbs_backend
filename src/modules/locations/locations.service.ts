@@ -4,9 +4,8 @@ import { RedisService } from '../../common/redis/redis.service';
 
 const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
-// v2 key so we invalidate any cache entries from the previous lookup format
-// that surfaced individual post-office names instead of the district label.
-const CACHE_KEY = (pin: string) => `pincode:v2:${pin}`;
+// v3 — invalidates earlier cache entries that used different label rules.
+const CACHE_KEY = (pin: string) => `pincode:v3:${pin}`;
 const UPSTREAM = 'https://api.postalpincode.in/pincode';
 /** Hard upper bound so a slow upstream never blocks the questionnaire UI. */
 const UPSTREAM_TIMEOUT_MS = 4000;
@@ -27,6 +26,10 @@ interface PostOfficeRow {
   Name?: string;
   District?: string;
   State?: string;
+  /** "B.O." / "S.O." / "H.O." / "G.P.O." — used to pick the main office. */
+  BranchType?: string;
+  /** "Delivery" / "Non-Delivery" — only deliverable offices are user-visible. */
+  DeliveryStatus?: string;
 }
 
 interface UpstreamResponse {
@@ -54,6 +57,50 @@ function toTitleCase(value: string | null | undefined): string | null {
     .split(/\s+/)
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(' ');
+}
+
+/**
+ * Post-office type priority — lower = more "main".
+ *
+ * Each Indian pincode covers multiple post offices. We want the canonical
+ * one the user thinks of when they hear the pincode:
+ *   - GPO / HO : the Head office of a metro / city
+ *   - SO / PO  : the main sub office (typical for towns like Addanki, 523201)
+ *   - BO       : Branch offices in surrounding villages — almost never the
+ *                label a user types in the locality box
+ *
+ * Combined with a `delivery=true` preference, this picks "Addanki" for
+ * 523201 (not "Kotikalapudi") and "New Delhi" for 110001 (not "Baroda House").
+ */
+const OFFICE_TYPE_PRIORITY: Record<string, number> = {
+  GPO: 0,
+  HO: 1,
+  SO: 2,
+  PO: 3,
+  BO: 4,
+};
+
+interface PostOfficeLike {
+  area?: string | null;
+  district?: string | null;
+  state?: string | null;
+  officeType?: string | null;
+  delivery?: boolean | null;
+}
+
+function pickMainOffice<T extends PostOfficeLike>(offices: readonly T[]): T | null {
+  if (!offices?.length) return null;
+  const sorted = [...offices].sort((a, b) => {
+    // Delivery-enabled offices first — these are the ones the postal service
+    // actually delivers to and are the canonical "main" office of the pin.
+    const da = a.delivery ? 0 : 1;
+    const db = b.delivery ? 0 : 1;
+    if (da !== db) return da - db;
+    const pa = OFFICE_TYPE_PRIORITY[a.officeType ?? ''] ?? 9;
+    const pb = OFFICE_TYPE_PRIORITY[b.officeType ?? ''] ?? 9;
+    return pa - pb;
+  });
+  return sorted[0] ?? null;
 }
 
 @Injectable()
@@ -110,30 +157,26 @@ export class LocationsService {
    * Synchronous lookup against the bundled India Post directory.
    * Returns an empty result when the pincode is unknown — never throws.
    *
-   * A single pincode in India typically covers 5-25 post offices spread
-   * across a district. We deliberately surface the **district** as the
-   * "locality" because it's the only label that uniquely identifies the
-   * area covered by the pincode — picking one post office name (e.g.
-   * "Baroda House" for 110001 / Connaught Place) confuses users.
+   * A single pincode covers many post offices (typically 5-25). We pick the
+   * canonical "main" office for the pincode using office-type and delivery
+   * heuristics — see `pickMainOffice` for the ordering rationale.
    */
   private lookupLocal(pincode: string): PincodeLookupResult {
     try {
-      const res = pincodeDb().getPincodeSummary(pincode);
-      if (!res.success || !res.data) {
+      const res = pincodeDb().getByPincode(pincode, { limit: 200 });
+      if (!res.success || !res.data?.data?.length) {
         return this.emptyResult(pincode, 'none');
       }
-      const data = res.data;
-      const district = toTitleCase(data.district);
-      const state = toTitleCase(data.state);
-      const formatted = [district, state].filter(Boolean).join(', ') || null;
-      return {
-        pincode,
-        locality: district,
-        district,
-        state,
-        formatted,
-        source: 'local',
-      };
+      const main = pickMainOffice(res.data.data);
+      if (!main) {
+        return this.emptyResult(pincode, 'none');
+      }
+      const locality = main.area?.trim() || null;
+      const district = toTitleCase(main.district);
+      const state = toTitleCase(main.state);
+      const formatted =
+        [locality, state].filter(Boolean).join(', ') || null;
+      return { pincode, locality, district, state, formatted, source: 'local' };
     } catch (err) {
       this.log.warn({ err: (err as Error)?.message }, 'local pincode lookup failed');
       return this.emptyResult(pincode, 'none');
@@ -159,21 +202,23 @@ export class LocationsService {
       if (!envelope || envelope.Status !== 'Success' || !envelope.PostOffice?.length) {
         return this.emptyResult(pincode, 'none');
       }
-      const po = envelope.PostOffice[0];
-      const district = toTitleCase(po.District ?? null);
-      const state = toTitleCase(po.State ?? null);
-      // We deliberately surface the district as the locality (see
-      // `lookupLocal` for the rationale). Post-office names returned by the
-      // upstream are not stable enough to use as the user-facing label.
-      const formatted = [district, state].filter(Boolean).join(', ') || null;
-      return {
-        pincode,
-        locality: district,
-        district,
-        state,
-        formatted,
-        source: 'upstream',
-      };
+      const main =
+        pickMainOffice(
+          envelope.PostOffice.map((po) => ({
+            area: po.Name ?? null,
+            district: po.District ?? null,
+            state: po.State ?? null,
+            officeType: po.BranchType ?? null,
+            delivery: po.DeliveryStatus
+              ? /delivery/i.test(po.DeliveryStatus) && !/non/i.test(po.DeliveryStatus)
+              : null,
+          })),
+        ) ?? null;
+      const locality = main?.area?.trim() || null;
+      const district = toTitleCase(main?.district ?? null);
+      const state = toTitleCase(main?.state ?? null);
+      const formatted = [locality, state].filter(Boolean).join(', ') || null;
+      return { pincode, locality, district, state, formatted, source: 'upstream' };
     } catch (err) {
       this.log.warn({ err: (err as Error)?.message }, 'pincode upstream lookup failed');
       return this.emptyResult(pincode, 'none');
