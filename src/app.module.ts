@@ -16,6 +16,8 @@ import { QuestionnaireModule } from './modules/questionnaire/questionnaire.modul
 import { MarketingPlansModule } from './modules/marketing-plans/marketing-plans.module';
 import { SpendModule } from './modules/spend/spend.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
+import { LocationsModule } from './modules/locations/locations.module';
 import { EmailModule } from './providers/email/email.module';
 import { SmsModule } from './providers/sms/sms.module';
 import type { Env } from './config/env.schema';
@@ -60,6 +62,8 @@ import type { Env } from './config/env.schema';
     MarketingPlansModule,
     SpendModule,
     ReportsModule,
+    FeedbackModule,
+    LocationsModule,
     HealthModule,
   ],
   providers: [
