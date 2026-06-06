@@ -20,6 +20,8 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { EmailModule } from './providers/email/email.module';
 import { SmsModule } from './providers/sms/sms.module';
+import { WhatsappModule } from './providers/whatsapp/whatsapp.module';
+import { NotificationModule } from './providers/notification/notification.module';
 import type { Env } from './config/env.schema';
 
 @Module({
@@ -55,6 +57,8 @@ import type { Env } from './config/env.schema';
     RedisModule,
     EmailModule,
     SmsModule,
+    WhatsappModule,
+    NotificationModule,
     UsersModule,
     AuthModule,
     DecisionEngineModule,

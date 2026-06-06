@@ -9,6 +9,7 @@ import type { Prisma as PrismaTypes } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DecisionEngineService } from '../decision-engine/decision-engine.service';
 import { MarketingPlansService } from '../marketing-plans/marketing-plans.service';
+import { NotificationService } from '../../providers/notification/notification.service';
 import {
   BusinessMode,
   BusinessOffering,
@@ -104,6 +105,7 @@ export class QuestionnaireService {
     private readonly prisma: PrismaService,
     private readonly decisionEngine: DecisionEngineService,
     private readonly marketingPlans: MarketingPlansService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async getMetadata() {
@@ -364,6 +366,16 @@ export class QuestionnaireService {
 
       return { evaluationId: evaluation.id, plan: created };
     });
+
+    // Best-effort: notify user that plan was generated
+    try {
+      await this.notifications.notifyPlanGenerated(userId, {
+        monthlyBudget: Number(plan.monthlyBudget),
+        annualBudget: Number(plan.annualBudget),
+      });
+    } catch (err) {
+      // ignore notification errors
+    }
 
     const formatted = await this.marketingPlans.getById(userId, plan.id);
     return { evaluationId, planId: plan.id, plan: formatted };
