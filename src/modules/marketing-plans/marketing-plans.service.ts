@@ -1,15 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { DecisionEngineService } from '../decision-engine/decision-engine.service';
 import type { PlanGenerationResult } from '../decision-engine/decision-engine.types';
 import { resolveMarketingGoals } from '../questionnaire/questionnaire.constants';
+import { NotificationService } from '../../providers/notification/notification.service';
 
 @Injectable()
 export class MarketingPlansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly decisionEngine: DecisionEngineService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async createFromEvaluation(
@@ -22,7 +24,7 @@ export class MarketingPlansService {
       data: { isCurrent: false },
     });
 
-    return this.prisma.marketingPlan.create({
+    const plan = await this.prisma.marketingPlan.create({
       data: {
         userId,
         evaluationId,
@@ -33,6 +35,18 @@ export class MarketingPlansService {
         isCurrent: true,
       },
     });
+
+    // Best-effort notification; do not block plan creation
+    try {
+      await this.notifications.notifyPlanGenerated(userId, {
+        monthlyBudget: Number(result.monthlyBudget),
+        annualBudget: Number(result.annualBudget),
+      });
+    } catch (err) {
+      // ignore notification errors
+    }
+
+    return plan;
   }
 
   async getCurrent(userId: string) {
@@ -103,6 +117,13 @@ export class MarketingPlansService {
       });
       return row;
     });
+
+    // Notify user about budget update (best-effort)
+    try {
+      await this.notifications.notifyPlanUpdated(userId, { monthlyBudget: Number(updated.monthlyBudget) });
+    } catch (err) {
+      // ignore notification errors
+    }
 
     return this.formatPlan(updated);
   }

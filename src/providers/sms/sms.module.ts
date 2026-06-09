@@ -1,28 +1,15 @@
-import { Global, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Module } from '@nestjs/common';
+import { SmsService } from './sms.service';
 import { SMS_PROVIDER } from './sms.interface';
-import { StubSmsProvider } from './stub-sms.provider';
-import { TwilioSmsProvider } from './twilio-sms.provider';
-import type { Env } from '../../config/env.schema';
 
-@Global()
 @Module({
   providers: [
-    StubSmsProvider,
-    TwilioSmsProvider,
+    SmsService,
     {
       provide: SMS_PROVIDER,
-      inject: [ConfigService, StubSmsProvider, TwilioSmsProvider],
-      useFactory: (
-        config: ConfigService<Env, true>,
-        stub: StubSmsProvider,
-        twilio: TwilioSmsProvider,
-      ) => {
-        const provider = config.get('SMS_PROVIDER', { infer: true });
-        return provider === 'twilio' ? twilio : stub;
-      },
+      useClass: SmsService,
     },
   ],
-  exports: [SMS_PROVIDER],
+  exports: [SMS_PROVIDER, SmsService],
 })
 export class SmsModule {}

@@ -13,6 +13,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EMAIL_PROVIDER, type EmailProvider } from '../../providers/email/email.interface';
 import { SMS_PROVIDER, type SmsProvider } from '../../providers/sms/sms.interface';
+import { WHATSAPP_PROVIDER, type WhatsappProvider } from '../../providers/whatsapp/whatsapp.interface';
 import type { Env } from '../../config/env.schema';
 
 const OTP_TTL_SEC = 5 * 60;
@@ -28,6 +29,7 @@ export class OtpService {
     private readonly config: ConfigService<Env, true>,
     @Inject(EMAIL_PROVIDER) private readonly email: EmailProvider,
     @Inject(SMS_PROVIDER) private readonly sms: SmsProvider,
+    @Inject(WHATSAPP_PROVIDER) private readonly whatsapp: WhatsappProvider,
   ) {}
 
   private isEmail(identifier: string): boolean {
@@ -114,6 +116,16 @@ export class OtpService {
         body: `Your MIBBS code is ${code}. Expires in ${OTP_TTL_SEC / 60} min.`,
         tag: `otp_${input.purpose.toLowerCase()}`,
       });
+      // Attempt WhatsApp send as a best-effort additional channel.
+      try {
+        await this.whatsapp.send({
+          to: identifier,
+          body: `Your MIBBS code is ${code}. Expires in ${OTP_TTL_SEC / 60} min.`,
+          tag: `otp_${input.purpose.toLowerCase()}`,
+        });
+      } catch (err) {
+        // ignore whatsapp errors; OTP already sent via SMS
+      }
     }
 
     await this.redis.client.set(cooldownKey, '1', 'EX', SEND_COOLDOWN_SEC);

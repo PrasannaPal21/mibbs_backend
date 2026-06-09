@@ -47,18 +47,25 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional().default(''),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
 
-  WHATSAPP_PROVIDER: z.enum(['meta', 'stub']).default('stub'),
+  WHATSAPP_PROVIDER: z.enum(['meta', 'msg91', 'stub']).default('stub'),
   WHATSAPP_META_PHONE_NUMBER_ID: z.string().optional().default(''),
   WHATSAPP_META_ACCESS_TOKEN: z.string().optional().default(''),
+  // MSG91 WhatsApp integration
+  MSG91_WHATSAPP_AUTH_KEY: z.string().optional().default(''),
+  MSG91_WHATSAPP_SENDER: z.string().optional().default(''),
+  MSG91_WHATSAPP_TEMPLATE_ID: z.string().optional().default(''),
+  MSG91_WHATSAPP_API_URL: z.string().optional().default('https://api.msg91.com/api/v5/whatsapp'),
 
-  EMAIL_PROVIDER: z.enum(['resend', 'stub']).default('stub'),
+  EMAIL_PROVIDER: z.enum(['resend', 'msg91', 'stub']).default('stub'),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().default('MIBBS <no-reply@mibbs.app>'),
 
-  SMS_PROVIDER: z.enum(['twilio', 'stub']).default('stub'),
+  SMS_PROVIDER: z.enum(['twilio', 'msg91', 'stub']).default('stub'),
   TWILIO_ACCOUNT_SID: z.string().optional().default(''),
   TWILIO_AUTH_TOKEN: z.string().optional().default(''),
   TWILIO_FROM: z.string().optional().default(''),
+  MSG91_AUTH_KEY: z.string().optional().default(''),
+  MSG91_SENDER: z.string().optional().default('TXTIND'),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });

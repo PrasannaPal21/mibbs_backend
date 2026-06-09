@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Intent, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { NotificationService } from '../../providers/notification/notification.service';
 import type { CreateSpendDto } from './dto/create-spend.dto';
 import {
   buildActualByChannel,
@@ -17,7 +18,7 @@ interface PlanAllocation {
 
 @Injectable()
 export class SpendService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationService) {}
 
   private monthBounds(date = new Date()) {
     const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -81,6 +82,15 @@ export class SpendService {
       },
     });
 
+    // best-effort notification; do not block the API
+    // note: notifySpendLogged already sends SMS + WhatsApp + Email — no separate
+    // WhatsApp call needed (removed to avoid duplicate WhatsApp notifications)
+    try {
+      await this.notifications.notifySpendLogged(userId, { amount: Number(dto.amount), channel: dto.channel });
+    } catch (err) {
+      // ignore notification errors
+    }
+
     return this.formatLog(log);
   }
 
@@ -102,6 +112,15 @@ export class SpendService {
     const log = await this.prisma.spendLog.findFirst({ where: { id: logId, userId } });
     if (!log) throw new NotFoundException('Spend log not found');
     await this.prisma.spendLog.delete({ where: { id: logId } });
+    // best-effort notification about deletion
+    // note: notifySpendRemoved already sends SMS + WhatsApp + Email — no separate
+    // WhatsApp call needed (removed to avoid duplicate WhatsApp notifications)
+    try {
+      await this.notifications.notifySpendRemoved(userId, { amount: Number(log.amount), channel: log.channel });
+    } catch (err) {
+      // ignore notification errors
+    }
+
     return { deleted: true };
   }
 

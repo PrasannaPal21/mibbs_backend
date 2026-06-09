@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { UsersModule } from '../users/users.module';
 import { EmailModule } from '../../providers/email/email.module';
 import { SmsModule } from '../../providers/sms/sms.module';
+import { WhatsappModule } from '../../providers/whatsapp/whatsapp.module';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { TokensService } from './tokens.service';
@@ -15,6 +16,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UsersModule,
     EmailModule,
     SmsModule,
+    WhatsappModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({}),
   ],
