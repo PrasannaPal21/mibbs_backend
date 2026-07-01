@@ -55,5 +55,5 @@ src/
   providers/        pluggable external integrations (AI, WhatsApp, Email, SMS)
 prisma/
   schema.prisma     full data model
-  seed.ts           Challenge × Objective matrix seed
+  seed.ts           Challenge × Objective matrix seed.
 ```
