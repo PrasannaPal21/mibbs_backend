@@ -54,7 +54,10 @@ export const envSchema = z.object({
   MSG91_WHATSAPP_AUTH_KEY: z.string().optional().default(''),
   MSG91_WHATSAPP_SENDER: z.string().optional().default(''),
   MSG91_WHATSAPP_TEMPLATE_ID: z.string().optional().default(''),
-  MSG91_WHATSAPP_API_URL: z.string().optional().default('https://api.msg91.com/api/v5/whatsapp'),
+  MSG91_WHATSAPP_API_URL: z.string().optional().default(''),
+  // MSG91 WhatsApp v5 — required for template-based outbound messages
+  MSG91_WHATSAPP_INTEGRATED_NUMBER: z.string().optional().default(''),
+  MSG91_WHATSAPP_NAMESPACE: z.string().optional().default(''),
 
   EMAIL_PROVIDER: z.enum(['resend', 'msg91', 'stub']).default('stub'),
   RESEND_API_KEY: z.string().optional().default(''),

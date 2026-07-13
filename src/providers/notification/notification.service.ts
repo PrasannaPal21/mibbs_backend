@@ -108,18 +108,28 @@ export class NotificationService {
   //  WhatsApp
   // ──────────────────────────────────────────────
 
-  private async sendWhatsappToUser(userId: string, body: string, tag?: string) {
+  private async sendWhatsappToUser(
+    userId: string,
+    templateId: string,
+    params: Array<string | number>,
+    tag: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const phone = user?.phoneE164;
-    const template = tag ?? 'whatsapp';
+    // Prepend user.name as {{1}} for templates that include the user's name
+    const resolvedParams =
+      templateId === 'mibbs_plan_created' || templateId === 'mibbs_plan_generated'
+        ? [user?.name ?? 'User', ...params]
+        : params;
+    const bodyDesc = `Template: ${templateId} | ${resolvedParams.join(', ')}`;
 
     if (!phone) {
       this.logger.warn(`User ${userId} has no phone number; skipping WhatsApp`);
       await this.recordNotification({
         userId,
         channel: NotificationChannel.WHATSAPP,
-        template,
-        body,
+        template: templateId,
+        body: bodyDesc,
         to: '',
         status: NotificationStatus.FAILED,
         error: 'no-phone',
@@ -128,13 +138,13 @@ export class NotificationService {
     }
 
     try {
-      const result = await this.whatsapp.send({ to: phone, body, tag });
+      const result = await this.whatsapp.send({ to: phone, templateId, params: resolvedParams, tag });
       const status = result.success ? NotificationStatus.SENT : NotificationStatus.FAILED;
       await this.recordNotification({
         userId,
         channel: NotificationChannel.WHATSAPP,
-        template,
-        body,
+        template: templateId,
+        body: bodyDesc,
         to: phone,
         status,
         data: result.data,
@@ -149,8 +159,8 @@ export class NotificationService {
       await this.recordNotification({
         userId,
         channel: NotificationChannel.WHATSAPP,
-        template,
-        body,
+        template: templateId,
+        body: bodyDesc,
         to: phone,
         status: NotificationStatus.FAILED,
         data: err,
@@ -275,9 +285,14 @@ export class NotificationService {
   async notifyPlanGenerated(userId: string, plan: NotificationPlanBudget) {
     const smsBody = `MIBBS: Your marketing plan is ready. Monthly budget ₹${plan.monthlyBudget}, Annual ₹${plan.annualBudget}.`;
     const res = await this.sendToUser(userId, smsBody, 'plan_generated');
-    // Best-effort WhatsApp notification as well
+    // Best-effort WhatsApp notification using plan_created template
     try {
-      await this.sendWhatsappToUser(userId, smsBody, 'plan_generated');
+      await this.sendWhatsappToUser(
+        userId,
+        'mibbs_plan_generated',
+        [plan.monthlyBudget, plan.annualBudget],
+        'plan_generated',
+      );
     } catch (err) {
       // ignore whatsapp errors
     }
@@ -318,9 +333,14 @@ export class NotificationService {
   async notifySpendLogged(userId: string, log: { amount: number; channel: string }) {
     const smsBody = `MIBBS: Spend recorded ₹${log.amount} on ${log.channel}.`;
     const res = await this.sendToUser(userId, smsBody, 'spend_logged');
-    // Best-effort WhatsApp
+    // Best-effort WhatsApp using spend_logs template
     try {
-      await this.sendWhatsappToUser(userId, smsBody, 'spend_logged');
+      await this.sendWhatsappToUser(
+        userId,
+        'mibbs_spend_logs',
+        [log.amount, log.channel],
+        'spend_logged',
+      );
     } catch (err) {
       // ignore whatsapp errors
     }
@@ -362,12 +382,7 @@ export class NotificationService {
       ? `MIBBS: Campaign "${title}" saved. We will notify you when it launches.`
       : `MIBBS: Campaign saved. We will notify you when it launches.`;
     const res = await this.sendToUser(userId, smsBody, 'campaign_placeholder');
-    // Best-effort WhatsApp
-    try {
-      await this.sendWhatsappToUser(userId, smsBody, 'campaign_placeholder');
-    } catch (err) {
-      // ignore whatsapp errors
-    }
+    // WhatsApp skipped — no template created for campaign placeholder
     // Best-effort email
     try {
       await this.sendEmailToUser(
@@ -395,9 +410,17 @@ export class NotificationService {
       ? `MIBBS: Your monthly budget has been updated to ₹${plan.monthlyBudget}.`
       : `MIBBS: Your marketing plan was updated.`;
     const res = await this.sendToUser(userId, smsBody, 'plan_updated');
-    // Best-effort WhatsApp
+    // Best-effort WhatsApp using plan_updated template
     try {
-      await this.sendWhatsappToUser(userId, smsBody, 'plan_updated');
+      const waParams: Array<string | number> = plan.monthlyBudget
+        ? [plan.monthlyBudget]
+        : [];
+      await this.sendWhatsappToUser(
+        userId,
+        'mibbs_plan_updated',
+        waParams,
+        'plan_updated',
+      );
     } catch (err) {
       // ignore whatsapp errors
     }
@@ -435,9 +458,14 @@ export class NotificationService {
   async notifySpendRemoved(userId: string, log: { amount: number; channel: string }) {
     const smsBody = `MIBBS: A spend entry of ₹${log.amount} on ${log.channel} was removed.`;
     const res = await this.sendToUser(userId, smsBody, 'spend_removed');
-    // Best-effort WhatsApp
+    // Best-effort WhatsApp using spend_remove template
     try {
-      await this.sendWhatsappToUser(userId, smsBody, 'spend_removed');
+      await this.sendWhatsappToUser(
+        userId,
+        'mibbs_spend_remove',
+        [log.amount, log.channel],
+        'spend_removed',
+      );
     } catch (err) {
       // ignore whatsapp errors
     }

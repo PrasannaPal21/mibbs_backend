@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Intent, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationService } from '../../providers/notification/notification.service';
@@ -18,6 +18,7 @@ interface PlanAllocation {
 
 @Injectable()
 export class SpendService {
+  private readonly logger = new Logger(SpendService.name);
   constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationService) {}
 
   private monthBounds(date = new Date()) {
@@ -83,12 +84,11 @@ export class SpendService {
     });
 
     // best-effort notification; do not block the API
-    // note: notifySpendLogged already sends SMS + WhatsApp + Email — no separate
-    // WhatsApp call needed (removed to avoid duplicate WhatsApp notifications)
+    this.logger.debug(`Sending spend notification for user ${userId}: ₹${dto.amount} on ${dto.channel}`);
     try {
       await this.notifications.notifySpendLogged(userId, { amount: Number(dto.amount), channel: dto.channel });
     } catch (err) {
-      // ignore notification errors
+      this.logger.error(`Spend notification failed: ${(err as Error)?.message || err}`);
     }
 
     return this.formatLog(log);
@@ -113,12 +113,11 @@ export class SpendService {
     if (!log) throw new NotFoundException('Spend log not found');
     await this.prisma.spendLog.delete({ where: { id: logId } });
     // best-effort notification about deletion
-    // note: notifySpendRemoved already sends SMS + WhatsApp + Email — no separate
-    // WhatsApp call needed (removed to avoid duplicate WhatsApp notifications)
+    this.logger.debug(`Sending spend removal notification for user ${userId}: ₹${log.amount} on ${log.channel}`);
     try {
       await this.notifications.notifySpendRemoved(userId, { amount: Number(log.amount), channel: log.channel });
     } catch (err) {
-      // ignore notification errors
+      this.logger.error(`Spend removal notification failed: ${(err as Error)?.message || err}`);
     }
 
     return { deleted: true };

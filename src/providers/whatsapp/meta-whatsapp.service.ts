@@ -14,6 +14,14 @@ export class MetaWhatsappService implements WhatsappProvider {
   constructor(private readonly config: ConfigService<Env, true>) {
     this.phoneNumberId = this.config.get('WHATSAPP_META_PHONE_NUMBER_ID', { infer: true }) || '';
     this.accessToken = this.config.get('WHATSAPP_META_ACCESS_TOKEN', { infer: true }) || '';
+
+    if (!this.phoneNumberId || !this.accessToken) {
+      this.logger.warn(
+        `Meta WhatsApp: missing env vars (phoneNumberId=${this.phoneNumberId ? '✓' : '✗'} accessToken=${
+          this.accessToken ? '✓' : '✗'
+        }). WhatsApp will not work.`,
+      );
+    }
   }
 
   private normalizeNumber(n: string) {
@@ -42,7 +50,7 @@ export class MetaWhatsappService implements WhatsappProvider {
           type: 'template',
           template: {
             name: input.templateId,
-            language: { code: 'en_US' },
+            language: { code: 'en' },
             components: components,
           },
         };
@@ -55,7 +63,7 @@ export class MetaWhatsappService implements WhatsappProvider {
         };
       }
 
-      const url = `${this.apiBase}/v17.0/${this.phoneNumberId}/messages`;
+      const url = `${this.apiBase}/v21.0/${this.phoneNumberId}/messages`;
       this.logger.debug(`Meta WhatsApp send to=${to} template=${input.templateId ?? 'none'}`);
       const response = await axios.post(url, payload, {
         headers: { Authorization: `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
