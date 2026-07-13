@@ -45,8 +45,7 @@ export class AuthController {
     const domain = this.config.get('COOKIE_DOMAIN', { infer: true });
 
     // COOKIE_SECURE=auto → true in production, false in development.
-    const secure =
-      secureConfig === 'auto' ? isProd : secureConfig === 'true';
+    const secure = secureConfig === 'auto' ? isProd : secureConfig === 'true';
 
     return {
       httpOnly: true as const,
