@@ -69,6 +69,12 @@ export const envSchema = z.object({
   TWILIO_FROM: z.string().optional().default(''),
   MSG91_AUTH_KEY: z.string().optional().default(''),
   MSG91_SENDER: z.string().optional().default('TXTIND'),
+  // MSG91 Flow API (v5) — when set, SMS is sent via POST /api/v5/flow/
+  // (the flow's approved template) instead of the legacy /api/v2/sendsms.
+  MSG91_FLOW_ID: z.string().optional().default(''),
+  // Variable name in the approved SMS template that holds the OTP code
+  // (e.g. template placeholder ##OTP## → value 'OTP').
+  MSG91_OTP_VAR: z.string().optional().default('OTP'),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });

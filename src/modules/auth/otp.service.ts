@@ -111,9 +111,14 @@ export class OtpService {
         tag: `otp_${input.purpose.toLowerCase()}`,
       });
     } else {
+      // When sending via the MSG91 Flow API, the approved template already
+      // contains the message text (e.g. "Your OTP for password reset is ##OTP##"),
+      // so only the code is passed as a named variable matching the template.
+      const otpVar = this.config.get('MSG91_OTP_VAR', { infer: true }) || 'OTP';
       await this.sms.send({
         to: identifier,
         body: `Your MIBBS code is ${code}. Expires in ${OTP_TTL_SEC / 60} min.`,
+        params: { [otpVar]: code },
         tag: `otp_${input.purpose.toLowerCase()}`,
       });
       // Attempt WhatsApp send as a best-effort additional channel.
