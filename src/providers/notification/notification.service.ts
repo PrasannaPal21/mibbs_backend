@@ -1,9 +1,11 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { SMS_PROVIDER, type SmsProvider } from '../sms/sms.interface';
 import { WHATSAPP_PROVIDER, type WhatsappProvider } from '../whatsapp/whatsapp.interface';
 import { EMAIL_PROVIDER, type EmailProvider } from '../email/email.interface';
 import { NotificationChannel, NotificationStatus } from '@prisma/client';
+import type { Env } from '../../config/env.schema';
 
 type NotificationPlanBudget = { monthlyBudget: number; annualBudget: number };
 
@@ -12,6 +14,7 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService<Env, true>,
     @Inject(SMS_PROVIDER) private readonly sms: SmsProvider,
     @Inject(WHATSAPP_PROVIDER) private readonly whatsapp: WhatsappProvider,
     @Inject(EMAIL_PROVIDER) private readonly email: EmailProvider,
@@ -52,7 +55,13 @@ export class NotificationService {
   //  SMS
   // ──────────────────────────────────────────────
 
-  private async sendToUser(userId: string, body: string, tag?: string) {
+  private async sendToUser(
+    userId: string,
+    body: string,
+    tag?: string,
+    params?: Record<string, string | number>,
+    flowId?: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const phone = user?.phoneE164;
     const template = tag ?? 'sms';
@@ -72,7 +81,7 @@ export class NotificationService {
     }
 
     try {
-      const result = await this.sms.send({ to: phone, body, tag });
+      const result = await this.sms.send({ to: phone, body, tag, params, flowId });
       const status = result.success ? NotificationStatus.SENT : NotificationStatus.FAILED;
       await this.recordNotification({
         userId,
@@ -283,8 +292,17 @@ export class NotificationService {
   // ──────────────────────────────────────────────
 
   async notifyPlanGenerated(userId: string, plan: NotificationPlanBudget) {
-    const smsBody = `MIBBS: Your marketing plan is ready. Monthly budget ₹${plan.monthlyBudget}, Annual ₹${plan.annualBudget}.`;
-    const res = await this.sendToUser(userId, smsBody, 'plan_generated');
+    // Fetch user name for the DLT template variable
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const username = user?.name ?? 'User';
+    const smsBody = `MIBBS: Hi ${username}, your marketing plan is ready. Monthly budget ₹${plan.monthlyBudget}, Annual ₹${plan.annualBudget}.`;
+    const planReadyFlowId = this.config.get('MSG91_PLAN_READY_FLOW_ID', { infer: true });
+    const smsParams = {
+      username,
+      monthly_budget: plan.monthlyBudget,
+      annual_budget: plan.annualBudget,
+    };
+    const res = await this.sendToUser(userId, smsBody, 'plan_generated', smsParams, planReadyFlowId || undefined);
     // Best-effort WhatsApp notification using plan_created template
     try {
       await this.sendWhatsappToUser(

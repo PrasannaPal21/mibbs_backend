@@ -29,10 +29,12 @@ export class SmsService implements SmsProvider {
     mobile: string,
     message: string,
     params?: Record<string, string | number>,
+    flowIdOverride?: string,
   ) {
     try {
-      if (this.flowId) {
-        return await this.sendViaFlow(mobile, message, params);
+      const effectiveFlowId = flowIdOverride || this.flowId;
+      if (effectiveFlowId) {
+        return await this.sendViaFlow(mobile, message, params, effectiveFlowId);
       }
       return await this.sendViaLegacy(mobile, message);
     } catch (error: unknown) {
@@ -67,6 +69,7 @@ export class SmsService implements SmsProvider {
     mobile: string,
     message: string,
     params?: Record<string, string | number>,
+    flowIdOverride?: string,
   ) {
     const recipient: Record<string, string | number> = { mobiles: mobile };
     if (params && Object.keys(params).length > 0) {
@@ -75,13 +78,14 @@ export class SmsService implements SmsProvider {
       recipient.var = message;
     }
 
+    const effectiveFlowId = flowIdOverride || this.flowId;
     const payload = {
-      flow_id: this.flowId,
+      flow_id: effectiveFlowId,
       sender: this.sender,
       recipients: [recipient],
     };
 
-    this.logger.debug(`MSG91 Flow send payload: flow_id=${this.flowId} sender=${this.sender} to=${mobile}`);
+    this.logger.debug(`MSG91 Flow send payload: flow_id=${effectiveFlowId} sender=${this.sender} to=${mobile}`);
     const response = await axios.post('https://api.msg91.com/api/v5/flow/', payload, {
       headers: {
         authkey: this.authKey,
@@ -127,7 +131,7 @@ export class SmsService implements SmsProvider {
   async send(input: SendSmsInput) {
     // MSG91 expects numbers without a leading '+', e.g. 919876543210
     const to = typeof input.to === 'string' && input.to.startsWith('+') ? input.to.slice(1) : input.to;
-    const data = await this.sendSms(to, input.body, input.params);
+    const data = await this.sendSms(to, input.body, input.params, input.flowId);
     if (data) return { success: true, data };
     return { success: false, data: null };
   }
