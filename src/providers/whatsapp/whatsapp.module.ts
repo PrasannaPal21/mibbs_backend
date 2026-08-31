@@ -5,6 +5,9 @@ import { Msg91WhatsappService } from './msg91-whatsapp.service';
 import { StubWhatsappService } from './stub-whatsapp.service';
 import { MetaWhatsappService } from './meta-whatsapp.service';
 import { Msg91WebhookController } from './msg91-webhook.controller';
+import { WhatsAppEmbeddedSignupService } from './whatsapp-embedded-signup.service';
+import { WhatsAppEmbeddedSignupController } from './whatsapp-embedded-signup.controller';
+import { PrismaModule } from '../../common/prisma/prisma.module';
 
 const whatsappProviderFactory: Provider = {
   provide: WHATSAPP_PROVIDER,
@@ -22,8 +25,15 @@ const whatsappProviderFactory: Provider = {
 };
 
 @Module({
-  controllers: [Msg91WebhookController],
-  providers: [Msg91WhatsappService, MetaWhatsappService, StubWhatsappService, whatsappProviderFactory],
-  exports: [WHATSAPP_PROVIDER],
+  imports: [PrismaModule],
+  controllers: [Msg91WebhookController, WhatsAppEmbeddedSignupController],
+  providers: [
+    Msg91WhatsappService,
+    MetaWhatsappService,
+    StubWhatsappService,
+    WhatsAppEmbeddedSignupService,
+    whatsappProviderFactory,
+  ],
+  exports: [WHATSAPP_PROVIDER, WhatsAppEmbeddedSignupService],
 })
 export class WhatsappModule {}

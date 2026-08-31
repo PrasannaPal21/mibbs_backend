@@ -50,6 +50,8 @@ export const envSchema = z.object({
   WHATSAPP_PROVIDER: z.enum(['meta', 'msg91', 'stub']).default('stub'),
   WHATSAPP_META_PHONE_NUMBER_ID: z.string().optional().default(''),
   WHATSAPP_META_ACCESS_TOKEN: z.string().optional().default(''),
+  WHATSAPP_META_APP_ID: z.string().optional().default(''),
+  WHATSAPP_META_APP_SECRET: z.string().optional().default(''),
   // MSG91 WhatsApp integration
   MSG91_WHATSAPP_AUTH_KEY: z.string().optional().default(''),
   MSG91_WHATSAPP_SENDER: z.string().optional().default(''),
@@ -75,6 +77,9 @@ export const envSchema = z.object({
   // Variable name in the approved SMS template that holds the OTP code
   // (e.g. template placeholder ##OTP## → value 'OTP').
   MSG91_OTP_VAR: z.string().optional().default('OTP'),
+  // Flow ID for the "Plan Ready" DLT template (Mibbs_Plab_Ready)
+  // Variables: ##username##, ##monthly_budget##, ##annual_budget##
+  MSG91_PLAN_READY_FLOW_ID: z.string().optional().default(''),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });

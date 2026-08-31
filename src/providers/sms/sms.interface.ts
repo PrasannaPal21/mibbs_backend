@@ -5,6 +5,9 @@ export interface SendSmsInput {
   // Optional named variables for MSG91 Flow API sends.
   // When omitted, the whole `body` is passed as the flow's `var` placeholder.
   params?: Record<string, string | number>;
+  // Optional flow ID override — allows different DLT templates per send.
+  // When omitted, the default MSG91_FLOW_ID env var is used.
+  flowId?: string;
 }
 
 export interface SmsProvider {
