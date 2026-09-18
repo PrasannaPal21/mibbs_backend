@@ -46,15 +46,31 @@ services:
       REDIS_PORT: 6379
       JWT_ACCESS_SECRET: dev-access-secret-change-me-please-32+chars
       JWT_REFRESH_SECRET: dev-refresh-secret-change-me-please-32+chars
+      WHATSAPP_PROVIDER: waha
+      WAHA_BASE_URL: http://waha:3000
+      WAHA_SESSION: default
+      WAHA_API_KEY: ""
       LOG_LEVEL: info
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      waha:
+        condition: service_started
     ports:
       - "4000:4000"
     profiles: ["full"]
+
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    environment:
+      WAHA_DASHBOARD_ENABLED: "true"
+      WAHA_DASHBOARD_PORT: 3000
+      WAHA_STORAGE_ENGINE: memory
+    ports:
+      - "3001:3000"
 
 volumes:
   mibbs_pg_data:

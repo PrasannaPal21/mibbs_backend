@@ -47,11 +47,15 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional().default(''),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
 
-  WHATSAPP_PROVIDER: z.enum(['meta', 'msg91', 'stub']).default('stub'),
+  WHATSAPP_PROVIDER: z.enum(['meta', 'msg91', 'waha', 'stub']).default('stub'),
   WHATSAPP_META_PHONE_NUMBER_ID: z.string().optional().default(''),
   WHATSAPP_META_ACCESS_TOKEN: z.string().optional().default(''),
   WHATSAPP_META_APP_ID: z.string().optional().default(''),
   WHATSAPP_META_APP_SECRET: z.string().optional().default(''),
+  // WAHA (WhatsApp HTTP API) integration
+  WAHA_BASE_URL: z.string().optional().default('http://localhost:3000'),
+  WAHA_SESSION: z.string().optional().default('default'),
+  WAHA_API_KEY: z.string().optional().default(''),
   // MSG91 WhatsApp integration
   MSG91_WHATSAPP_AUTH_KEY: z.string().optional().default(''),
   MSG91_WHATSAPP_SENDER: z.string().optional().default(''),

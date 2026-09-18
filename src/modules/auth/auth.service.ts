@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { TokensService, type IssuedTokens } from './tokens.service';
 import { OtpService } from './otp.service';
+import { SMS_PROVIDER, type SmsProvider } from '../../providers/sms/sms.interface';
 import type { Env } from '../../config/env.schema';
 import type { RegisterDto } from './dto/register.dto';
 import type { LoginDto } from './dto/login.dto';
@@ -28,11 +31,13 @@ export interface AuthResult {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     private readonly users: UsersService,
     private readonly tokens: TokensService,
     private readonly otp: OtpService,
     private readonly config: ConfigService<Env, true>,
+    @Inject(SMS_PROVIDER) private readonly sms: SmsProvider,
   ) {}
 
   async register(dto: RegisterDto, meta?: RequestMeta): Promise<AuthResult> {
@@ -55,6 +60,20 @@ export class AuthService {
 
     const tokens = await this.tokens.issueForUser(user.id, user.email, meta);
     await this.users.setLastLogin(user.id);
+
+    // Send welcome SMS (best-effort)
+    if (user.phoneE164) {
+      try {
+        await this.sms.send({
+          to: user.phoneE164,
+          body: `Welcome to MIBBS, ${user.name}! Your AI-powered marketing assistant is ready. Log in to get started.`,
+          tag: 'welcome',
+        });
+      } catch (err) {
+        this.logger.warn('Welcome SMS failed', err);
+      }
+    }
+
     return { user, tokens };
   }
 
