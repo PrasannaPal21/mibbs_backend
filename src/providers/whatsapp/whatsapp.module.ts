@@ -4,6 +4,7 @@ import { WhatsappProvider, WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { Msg91WhatsappService } from './msg91-whatsapp.service';
 import { StubWhatsappService } from './stub-whatsapp.service';
 import { MetaWhatsappService } from './meta-whatsapp.service';
+import { WahaWhatsappService } from './waha-whatsapp.service';
 import { Msg91WebhookController } from './msg91-webhook.controller';
 import { WhatsAppEmbeddedSignupService } from './whatsapp-embedded-signup.service';
 import { WhatsAppEmbeddedSignupController } from './whatsapp-embedded-signup.controller';
@@ -19,6 +20,9 @@ const whatsappProviderFactory: Provider = {
     if (provider === 'meta') {
       return new MetaWhatsappService(config as any);
     }
+    if (provider === 'waha') {
+      return new WahaWhatsappService(config as any);
+    }
     return new StubWhatsappService();
   },
   inject: [ConfigService],
@@ -30,6 +34,7 @@ const whatsappProviderFactory: Provider = {
   providers: [
     Msg91WhatsappService,
     MetaWhatsappService,
+    WahaWhatsappService,
     StubWhatsappService,
     WhatsAppEmbeddedSignupService,
     whatsappProviderFactory,

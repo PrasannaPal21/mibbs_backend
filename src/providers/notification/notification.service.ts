@@ -292,17 +292,6 @@ export class NotificationService {
   // ──────────────────────────────────────────────
 
   async notifyPlanGenerated(userId: string, plan: NotificationPlanBudget) {
-    // Fetch user name for the DLT template variable
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const username = user?.name ?? 'User';
-    const smsBody = `MIBBS: Hi ${username}, your marketing plan is ready. Monthly budget ₹${plan.monthlyBudget}, Annual ₹${plan.annualBudget}.`;
-    const planReadyFlowId = this.config.get('MSG91_PLAN_READY_FLOW_ID', { infer: true });
-    const smsParams = {
-      username,
-      monthly_budget: plan.monthlyBudget,
-      annual_budget: plan.annualBudget,
-    };
-    const res = await this.sendToUser(userId, smsBody, 'plan_generated', smsParams, planReadyFlowId || undefined);
     // Best-effort WhatsApp notification using plan_created template
     try {
       await this.sendWhatsappToUser(
@@ -339,18 +328,15 @@ export class NotificationService {
           <p style="margin:0 0 8px;color:#6b7280;font-size:14px">Log in to your dashboard to view the full channel allocation and action plan.</p>
           <p style="margin:0;color:#6b7280;font-size:14px">— The MIBBS Team</p>
         `),
-        smsBody,
+        `MIBBS: Hi, your marketing plan is ready. Monthly budget ₹${plan.monthlyBudget}, Annual ₹${plan.annualBudget}.`,
         'plan_generated',
       );
     } catch (err) {
       // ignore email errors
     }
-    return res;
   }
 
   async notifySpendLogged(userId: string, log: { amount: number; channel: string }) {
-    const smsBody = `MIBBS: Spend recorded ₹${log.amount} on ${log.channel}.`;
-    const res = await this.sendToUser(userId, smsBody, 'spend_logged');
     // Best-effort WhatsApp using spend_logs template
     try {
       await this.sendWhatsappToUser(
@@ -386,20 +372,15 @@ export class NotificationService {
           </table>
           <p style="margin:0;color:#6b7280;font-size:14px">Track all your expenses and budget compliance on your MIBBS dashboard.</p>
         `),
-        smsBody,
+        `MIBBS: Spend recorded ₹${log.amount} on ${log.channel}.`,
         'spend_logged',
       );
     } catch (err) {
       // ignore email errors
     }
-    return res;
   }
 
   async notifyCampaignPlaceholder(userId: string, title?: string) {
-    const smsBody = title
-      ? `MIBBS: Campaign "${title}" saved. We will notify you when it launches.`
-      : `MIBBS: Campaign saved. We will notify you when it launches.`;
-    const res = await this.sendToUser(userId, smsBody, 'campaign_placeholder');
     // WhatsApp skipped — no template created for campaign placeholder
     // Best-effort email
     try {
@@ -414,20 +395,15 @@ export class NotificationService {
           </p>
           <p style="margin:0;color:#6b7280;font-size:14px">— The MIBBS Team</p>
         `),
-        smsBody,
+        title ? `MIBBS: Campaign "${title}" saved. We will notify you when it launches.` : `MIBBS: Campaign saved. We will notify you when it launches.`,
         'campaign_placeholder',
       );
     } catch (err) {
       // ignore email errors
     }
-    return res;
   }
 
   async notifyPlanUpdated(userId: string, plan: { monthlyBudget?: number; annualBudget?: number }) {
-    const smsBody = plan.monthlyBudget
-      ? `MIBBS: Your monthly budget has been updated to ₹${plan.monthlyBudget}.`
-      : `MIBBS: Your marketing plan was updated.`;
-    const res = await this.sendToUser(userId, smsBody, 'plan_updated');
     // Best-effort WhatsApp using plan_updated template
     try {
       const waParams: Array<string | number> = plan.monthlyBudget
@@ -464,18 +440,17 @@ export class NotificationService {
           ` : ''}
           <p style="margin:0;color:#6b7280;font-size:14px">Log in to your dashboard to review the updated plan.</p>
         `),
-        smsBody,
+        plan.monthlyBudget
+          ? `MIBBS: Your monthly budget has been updated to ₹${plan.monthlyBudget}.`
+          : `MIBBS: Your marketing plan was updated.`,
         'plan_updated',
       );
     } catch (err) {
       // ignore email errors
     }
-    return res;
   }
 
   async notifySpendRemoved(userId: string, log: { amount: number; channel: string }) {
-    const smsBody = `MIBBS: A spend entry of ₹${log.amount} on ${log.channel} was removed.`;
-    const res = await this.sendToUser(userId, smsBody, 'spend_removed');
     // Best-effort WhatsApp using spend_remove template
     try {
       await this.sendWhatsappToUser(
@@ -511,13 +486,12 @@ export class NotificationService {
           </table>
           <p style="margin:0;color:#6b7280;font-size:14px">Your spend records have been updated. Check your MIBBS dashboard for the latest.</p>
         `),
-        smsBody,
+        `MIBBS: A spend entry of ₹${log.amount} on ${log.channel} was removed.`,
         'spend_removed',
       );
     } catch (err) {
       // ignore email errors
     }
-    return res;
   }
 
 }
