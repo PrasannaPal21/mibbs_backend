@@ -5,15 +5,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: mibbs
-      POSTGRES_PASSWORD: mibbs
-      POSTGRES_DB: mibbs
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-mibbs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mibbs}
+      POSTGRES_DB: ${POSTGRES_DB:-mibbs}
     volumes:
       - mibbs_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mibbs -d mibbs"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mibbs} -d ${POSTGRES_DB:-mibbs}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,12 +19,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
     volumes:
       - mibbs_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -37,20 +34,41 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 4000
       API_PREFIX: v1
-      CORS_ORIGINS: http://localhost:3000
-      DATABASE_URL: postgresql://mibbs:mibbs@postgres:5432/mibbs?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mibbs}:${POSTGRES_PASSWORD:-mibbs}@postgres:5432/${POSTGRES_DB:-mibbs}?schema=public
+      DIRECT_URL: postgresql://${POSTGRES_USER:-mibbs}:${POSTGRES_PASSWORD:-mibbs}@postgres:5432/${POSTGRES_DB:-mibbs}?schema=public
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_ACCESS_SECRET: dev-access-secret-change-me-please-32+chars
-      JWT_REFRESH_SECRET: dev-refresh-secret-change-me-please-32+chars
-      WHATSAPP_PROVIDER: waha
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 30d
+      BCRYPT_ROUNDS: 12
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-waha}
       WAHA_BASE_URL: http://waha:3000
-      WAHA_SESSION: default
-      WAHA_API_KEY: ""
-      LOG_LEVEL: info
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      SMS_PROVIDER: ${SMS_PROVIDER:-stub}
+      MSG91_AUTH_KEY: ${MSG91_AUTH_KEY:-}
+      MSG91_SENDER: ${MSG91_SENDER:-TXTIND}
+      MSG91_FLOW_ID: ${MSG91_FLOW_ID:-}
+      MSG91_OTP_VAR: ${MSG91_OTP_VAR:-OTP}
+      MSG91_PLAN_READY_FLOW_ID: ${MSG91_PLAN_READY_FLOW_ID:-}
+      MSG91_WHATSAPP_AUTH_KEY: ${MSG91_WHATSAPP_AUTH_KEY:-}
+      MSG91_WHATSAPP_SENDER: ${MSG91_WHATSAPP_SENDER:-}
+      MSG91_WHATSAPP_TEMPLATE_ID: ${MSG91_WHATSAPP_TEMPLATE_ID:-}
+      MSG91_WHATSAPP_API_URL: ${MSG91_WHATSAPP_API_URL:-}
+      MSG91_WHATSAPP_INTEGRATED_NUMBER: ${MSG91_WHATSAPP_INTEGRATED_NUMBER:-}
+      MSG91_WHATSAPP_NAMESPACE: ${MSG91_WHATSAPP_NAMESPACE:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-stub}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-MIBBS <no-reply@mibbs.app>}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,7 +78,6 @@ services:
         condition: service_started
     ports:
       - "4000:4000"
-    profiles: ["full"]
 
   waha:
     image: devlikeapro/waha:latest
@@ -68,9 +85,9 @@ services:
     environment:
       WAHA_DASHBOARD_ENABLED: "true"
       WAHA_DASHBOARD_PORT: 3000
-      WAHA_STORAGE_ENGINE: memory
+      WAHA_STORAGE_ENGINE: ${WAHA_STORAGE_ENGINE:-memory}
     ports:
-      - "3001:3000"
+      - "${WAHA_DASHBOARD_PORT:-3001}:3000"
 
 volumes:
   mibbs_pg_data:
